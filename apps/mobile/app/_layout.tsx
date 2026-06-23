@@ -15,6 +15,7 @@ const theme = {
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState<boolean | null>(null);
   const segments = useSegments();
 
   useEffect(() => {
@@ -28,12 +29,23 @@ export default function RootLayout() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Track whether the user has accepted the aviso de privacidad (LFPDPPP gate).
+  useEffect(() => {
+    if (!session) { setPrivacyAccepted(null); return; }
+    supabase.from('profiles').select('privacy_accepted_at').eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => setPrivacyAccepted(!!data?.privacy_accepted_at));
+  }, [session]);
+
   useEffect(() => {
     if (!ready) return;
     const inAuth = segments[0] === '(auth)';
-    if (!session && !inAuth) router.replace('/(auth)/onboarding');
-    if (session && inAuth) router.replace('/(tabs)');
-  }, [session, ready, segments]);
+    const inLegal = segments[0] === 'legal';
+    if (!session && !inAuth) { router.replace('/(auth)/onboarding'); return; }
+    if (session) {
+      if (privacyAccepted === false && !inLegal) { router.replace('/legal/privacy'); return; }
+      if (privacyAccepted && (inAuth || inLegal)) router.replace('/(tabs)');
+    }
+  }, [session, ready, segments, privacyAccepted]);
 
   return (
     <SafeAreaProvider>

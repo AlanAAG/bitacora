@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, FlatList, StyleSheet } from 'react-native';
-import { FAB, Text, ActivityIndicator } from 'react-native-paper';
+import { FAB, Text, ActivityIndicator, IconButton } from 'react-native-paper';
 import { useCars } from '../../hooks/useCars';
 import { useReminders } from '../../hooks/useReminders';
 import { CarCard } from '../../components/CarCard';
@@ -29,7 +29,10 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={[Typography.heading, styles.header]}>Mis autos</Text>
+      <View style={styles.headerRow}>
+        <Text style={[Typography.heading, styles.header]}>Mis autos</Text>
+        <IconButton icon="cog" onPress={() => router.push('/settings/privacy')} />
+      </View>
       {primary && <CirculationBanner car={primary} contingenciaPhase={contingencia} />}
       {activeReminders.slice(0, 3).map(r => <ReminderBanner key={r.id} reminder={r} />)}
       <FlatList
@@ -54,6 +57,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background, paddingTop: 56 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: Spacing.sm },
   header: { paddingHorizontal: Spacing.lg, marginBottom: Spacing.md },
   list: { paddingHorizontal: Spacing.md, paddingBottom: 100 },
   fab: { position: 'absolute', bottom: Spacing.xl, right: Spacing.md, backgroundColor: Colors.primary },

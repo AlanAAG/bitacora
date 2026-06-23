@@ -55,6 +55,10 @@ export const Copy = {
   guardSavedPrefix: 'Esta sesión potencialmente te ahorró',
   guardShareCta: 'Compartir resultado',
   guardNewSession: 'Nueva sesión',
+  guardParticipantAck: 'El Modo Guardia solo es para conversaciones en las que tú participas y estás presente. En México grabar una conversación de la que eres parte es legal; tú eres quien decide grabar.',
+  guardConsentMissing: 'Para usar el Modo Guardia, activa el consentimiento de audio y transcripción en Configuración → Privacidad.',
+  guardShareWarningTitle: 'Antes de compartir',
+  guardShareWarningBody: 'Compartir o publicar la grabación o el resultado sin el consentimiento de la otra persona puede tener consecuencias legales. El audio es privado y solo tú lo controlas. ¿Deseas compartir el resultado?',
 
   // Paywall
   paywallHeadline: '¿Cuánto te cuesta un mecánico deshonesto?',

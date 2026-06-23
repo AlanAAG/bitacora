@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { Text, Button, TextInput } from 'react-native-paper';
+import { router } from 'expo-router';
 import { useAudioRecorder, AudioModule, RecordingPresets, setAudioModeAsync } from 'expo-audio';
 import { supabase } from '../../lib/supabase';
 import { useCars } from '../../hooks/useCars';
@@ -38,9 +39,17 @@ export default function GuardScreen() {
   }
 
   const handleStart = async () => {
-    // Consent check — show once
+    // LFPDPPP: audio + transcript are sensitive data — require explicit consent first.
+    if (!profile?.consent_audio || !profile?.consent_transcripts) {
+      Alert.alert('Consentimiento requerido', Copy.guardConsentMissing, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Ir a Configuración', onPress: () => router.push('/settings/privacy') },
+      ]);
+      return;
+    }
+    // One-time recording acknowledgement (participation is the legal basis, not this banner).
     if (!profile?.guard_consent_given) {
-      Alert.alert('Aviso de grabación', Copy.guardConsent, [
+      Alert.alert('Aviso de grabación', `${Copy.guardConsent}\n\n${Copy.guardParticipantAck}`, [
         { text: Copy.guardConsentDecline, style: 'cancel' },
         { text: Copy.guardConsentAccept, onPress: async () => {
           await supabase.from('profiles').update({ guard_consent_given: true })
@@ -91,9 +100,11 @@ export default function GuardScreen() {
   };
 
   const handleShare = async () => {
-    if (shareCardRef.current && sessionId) {
-      await captureAndShareCard(shareCardRef, sessionId);
-    }
+    if (!shareCardRef.current || !sessionId) return;
+    Alert.alert(Copy.guardShareWarningTitle, Copy.guardShareWarningBody, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Compartir', onPress: () => captureAndShareCard(shareCardRef, sessionId) },
+    ]);
   };
 
   const reset = () => {

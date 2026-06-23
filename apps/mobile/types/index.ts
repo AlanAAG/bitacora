@@ -145,6 +145,10 @@ export interface Profile {
   push_token?: string;
   location_state: string;
   guard_consent_given: boolean;
+  consent_location?: boolean;
+  consent_audio?: boolean;
+  consent_transcripts?: boolean;
+  privacy_accepted_at?: string | null;
   referral_code: string;
   referred_by?: string;
   free_guard_sessions_remaining: number;
