@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.local
+apps/mobile/.env
+.expo/
+dist/
+web-build/
+*.log
+.DS_Store
+supabase/.temp/
