@@ -58,17 +58,35 @@ export default function OCRScreen() {
     setLoading(false);
   };
 
+  const SERVICE_VALUES = ['oil_change', 'tire_rotation', 'brake_service', 'transmission', 'air_filter', 'spark_plugs', 'coolant', 'battery', 'alignment', 'inspection', 'other'];
+
   const importRecords = async () => {
     if (!results?.records || !carId) return;
+    let ok = 0, skipped = 0;
     for (const record of results.records) {
-      await supabase.from('service_records').insert({
-        ...record,
+      // Validate AI output before insert: required fields + known enum values.
+      const services = Array.isArray(record?.services)
+        ? record.services.filter((s: string) => SERVICE_VALUES.includes(s))
+        : [];
+      const mileage = Number(record?.mileage_at_service);
+      if (!record?.service_date || !/^\d{4}-\d{2}-\d{2}$/.test(record.service_date) || !Number.isFinite(mileage) || services.length === 0) {
+        skipped++; continue;
+      }
+      const { error } = await supabase.from('service_records').insert({
         car_id: carId,
+        service_date: record.service_date,
+        mileage_at_service: mileage,
+        shop_name: record.shop_name ?? null,
+        services,
+        description: record.description ?? null,
+        total_cost_mxn: record.total_cost_mxn ?? null,
+        notes: record.notes ?? null,
         imported_via_ocr: true,
         parts_replaced: [],
       });
+      if (error) skipped++; else ok++;
     }
-    Alert.alert('Importado', `${results.records.length} registros importados.`,
+    Alert.alert('Importado', `${ok} registros importados${skipped ? `, ${skipped} omitidos (datos incompletos)` : ''}.`,
       [{ text: 'OK', onPress: () => router.back() }]);
   };
 

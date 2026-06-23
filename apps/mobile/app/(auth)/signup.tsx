@@ -17,23 +17,14 @@ export default function SignupScreen() {
 
   const handleSignup = async () => {
     setLoading(true); setError('');
-    const { data, error } = await supabase.auth.signUp({
+    // Referral is applied server-side in handle_new_user from this metadata, so it works
+    // even with email confirmation on (no client session yet) and can't be tampered with.
+    const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name } },
+      options: { data: { full_name: name, referral_code: referralCode ?? undefined } },
     });
-    if (error) { setError(error.message); setLoading(false); return; }
-
-    // Link the referral (the profile row is created by the auth trigger; setting
-    // referred_by here fires the on_profile_referral_update trigger to award sessions).
-    const newUserId = data.user?.id;
-    if (referralCode && newUserId) {
-      const { data: referrer } = await supabase
-        .from('profiles').select('id').eq('referral_code', referralCode).single();
-      if (referrer && referrer.id !== newUserId) {
-        await supabase.from('profiles').update({ referred_by: referrer.id }).eq('id', newUserId);
-      }
-    }
+    if (error) { setError(error.message); }
     setLoading(false);
   };
 

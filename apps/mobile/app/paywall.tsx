@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Text, Button, Card } from 'react-native-paper';
 import { Colors } from '../constants/colors';
@@ -7,21 +8,27 @@ import { Copy } from '../constants/copy';
 import { router } from 'expo-router';
 import { supabase } from '../lib/supabase';
 
-// ponytail: no Stripe in MVP. Manual plan upgrade via Supabase directly.
-// Replace with RevenueCat when payment flow is needed.
-async function activateTrial() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-  const trialEnd = new Date();
-  trialEnd.setDate(trialEnd.getDate() + 7);
-  await supabase.from('subscriptions').upsert({
-    user_id: user.id,
-    plan: 'pro_guard',
-    valid_until: trialEnd.toISOString().split('T')[0],
-  }, { onConflict: 'user_id' });
+// ponytail: no Stripe in MVP. The trial is granted server-side by the start-trial edge
+// function (clients can't write subscriptions). Replace with RevenueCat for real billing.
+async function activateTrial(): Promise<string | null> {
+  const { data, error } = await supabase.functions.invoke('start-trial');
+  if (error) return 'No se pudo activar la prueba. Intenta de nuevo.';
+  if (data?.error === 'already_subscribed') return 'Ya tienes una suscripción activa.';
+  return null;
 }
 
 export default function PaywallScreen() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const onTrial = async () => {
+    setBusy(true); setError('');
+    const msg = await activateTrial();
+    setBusy(false);
+    if (msg) { setError(msg); return; }
+    router.replace('/(tabs)');
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={[Typography.hero, styles.headline]}>{Copy.paywallHeadline}</Text>
@@ -64,10 +71,10 @@ export default function PaywallScreen() {
           {['Historial ilimitado', 'Modo Guardia ilimitado', 'Recordatorios inteligentes', 'Bóveda de documentos', 'Verificación vehicular automática'].map(f => (
             <Text key={f} style={[Typography.body, { marginBottom: 4 }]}>✓ {f}</Text>
           ))}
-          <Button mode="contained" style={styles.activateBtn}
-            onPress={async () => { await activateTrial(); router.replace('/(tabs)'); }}>
+          <Button mode="contained" style={styles.activateBtn} loading={busy} onPress={onTrial}>
             Probar 7 días gratis
           </Button>
+          {error ? <Text style={{ color: Colors.danger, marginTop: Spacing.sm }}>{error}</Text> : null}
         </Card.Content>
       </Card>
 

@@ -74,10 +74,11 @@ export default function GuardScreen() {
     const uri = audioRecorder.uri;
     if (!uri) { setScreen('idle'); return; }
 
-    // Upload audio
+    // Upload audio — keep whatever container the recorder produced (.m4a/.aac/.mp4).
+    const ext = (uri.split('.').pop() || 'm4a').toLowerCase();
     const blob = await (await fetch(uri)).blob();
     await supabase.storage.from('guard-audio')
-      .upload(`${sessionId}.m4a`, blob, { contentType: 'audio/m4a' });
+      .upload(`${sessionId}.${ext}`, blob, { contentType: `audio/${ext}` });
 
     try {
       const data = await analyzeSession(sessionId);

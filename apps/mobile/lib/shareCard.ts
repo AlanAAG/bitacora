@@ -13,8 +13,9 @@ export async function captureAndShareCard(
   // Capture the card view as a PNG file
   const uri = await captureRef(viewRef, { format: 'png', quality: 0.95 });
 
-  // Persist to the public guard-cards bucket
-  const filename = `${sessionId}.png`;
+  // Persist to the public guard-cards bucket. Key is '<sessionId>/<ts>.png' so the storage
+  // RLS policy can scope writes to the session's owner.
+  const filename = `${sessionId}/${Date.now()}.png`;
   const blob = await (await fetch(uri)).blob();
   const { error } = await supabase.storage.from('guard-cards')
     .upload(filename, blob, { contentType: 'image/png', upsert: true });
