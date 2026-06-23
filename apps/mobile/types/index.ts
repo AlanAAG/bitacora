@@ -15,7 +15,9 @@ export interface Car {
   vin?: string;
   fuel_type: FuelType;
   current_mileage: number;
-  hologram_type?: '0' | '00' | 'doble_cero' | 'exento';
+  hologram_type?: '0' | '00' | '1' | '2' | 'doble_cero' | 'exento' | 'foreign';
+  is_electric_hybrid?: boolean;
+  is_moto?: boolean;
   is_primary: boolean;
   health_score: number;
   display_name: string;

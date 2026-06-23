@@ -64,8 +64,33 @@ Deno.serve(async (req) => {
   const { data: cars } = await query;
   if (!cars?.length) return new Response('ok', { status: 200 });
 
+  // Refrendo deadline (config-not-constant).
+  const { data: cfg } = await supabase.from('app_config').select('value').eq('key', 'refrendo').maybeSingle();
+  const refrendoDeadline: string | undefined = cfg?.value?.deadline;
+  const refrendoAmount: number | undefined = cfg?.value?.amount_mxn;
+
   for (const car of cars) {
     const carName = car.display_name || `${car.brand} ${car.model}`;
+
+    // 0. Refrendo (annual plate fee) — remind within 30 days of the deadline.
+    if (refrendoDeadline) {
+      const dLeft = Math.ceil((new Date(refrendoDeadline).getTime() - new Date(today).getTime()) / 86400000);
+      if (dLeft > 0 && dLeft <= 30) {
+        const { data: existing } = await supabase.from('reminders').select('id')
+          .eq('car_id', car.id).ilike('title', '%Refrendo%').eq('is_dismissed', false).maybeSingle();
+        if (!existing) {
+          await supabase.from('reminders').insert({
+            car_id: car.id,
+            title: `Refrendo de tu ${carName}`,
+            description: `El refrendo (${refrendoAmount ? `$${refrendoAmount} MXN` : 'placas'}) vence el ${refrendoDeadline}. Pagar a tiempo conserva el subsidio de tenencia.`,
+            reminder_type: 'date',
+            trigger_date: refrendoDeadline,
+            source: 'agent',
+          });
+          await sendPush(car.owner_id, `🪪 ${carName}`, `Refrendo vence el ${refrendoDeadline}.`);
+        }
+      }
+    }
 
     // 1. Part-based mileage reminders
     const { data: parts } = await supabase.from('parts').select('*').eq('car_id', car.id);
