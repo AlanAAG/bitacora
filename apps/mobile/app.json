@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
@@ -26,7 +25,9 @@
     "plugins": [
       "expo-router",
       "expo-audio",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-font",
+      "expo-asset"
     ]
   }
 }
