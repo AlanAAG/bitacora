@@ -1,9 +1,13 @@
 import { createClient } from 'npm:@supabase/supabase-js';
+import { requireCron, json } from '../_shared/auth.ts';
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
+
+// Holograms exempt from verificación (and electric/hybrid handled by caller).
+const EXEMPT = ['00', 'doble_cero', 'exento'];
 
 function getPlateLastDigit(plates: string): string {
   // Mexican plates format: ABC-123 or AB-12-CD — extract last numeric digit
@@ -12,26 +16,32 @@ function getPlateLastDigit(plates: string): string {
 }
 
 Deno.serve(async (req) => {
-  const { car_id, plates, hologram_type, state = 'CDMX' } = await req.json();
-  if (!plates) return new Response(JSON.stringify({ error: 'plates required' }), { status: 400 });
+  if (!requireCron(req)) return json({ error: 'forbidden' }, 403);
+  const { car_id, plates, hologram_type, state = 'CDMX' } = await req.json().catch(() => ({}));
+  if (!plates) return json({ error: 'plates required' }, 400);
+
+  if (EXEMPT.includes(hologram_type)) {
+    return json({ due_soon: false, exempt: true, message: `Holograma ${hologram_type}: exento de verificación.` });
+  }
 
   const lastDigit = getPlateLastDigit(plates);
   const today = new Date();
   const currentYear = today.getFullYear();
 
-  // Find matching schedule entry.
-  // plate_last_digit can be '5,6' format — check if lastDigit is in the list.
+  // The verification MONTH is driven by the plate digit (not the hologram), so match by
+  // digit + year across all schedule rows (seeded under hologram '0').
   const { data: schedules } = await supabase
     .from('verification_schedule')
     .select('*')
     .eq('state', state)
-    .eq('hologram', hologram_type || '0')
     .eq('year', currentYear);
 
-  const match = schedules?.find((s) => {
-    const digits = s.plate_last_digit.split(',').map((d: string) => d.trim());
-    return digits.includes(lastDigit);
-  });
+  const matches = (schedules ?? []).filter((s) =>
+    s.plate_last_digit.split(',').map((d: string) => d.trim()).includes(lastDigit)
+  ).sort((a, b) => a.end_date.localeCompare(b.end_date));
+  // Prefer the upcoming/active window (end_date >= today); else the latest past one.
+  const todayStr = today.toISOString().split('T')[0];
+  const match = matches.find((s) => s.end_date >= todayStr) ?? matches[matches.length - 1];
 
   if (!match) {
     return new Response(JSON.stringify({

@@ -1,5 +1,6 @@
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import { createClient } from 'npm:@supabase/supabase-js';
+import { requireCron, json } from '../_shared/auth.ts';
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });
 const supabase = createClient(
@@ -9,7 +10,8 @@ const supabase = createClient(
 
 const SEDEMA_URL = 'https://www.sedema.cdmx.gob.mx/programas/programa/verificacion-vehicular';
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  if (!requireCron(req)) return json({ error: 'forbidden' }, 403);
   try {
     // Fetch SEDEMA page
     const res = await fetch(SEDEMA_URL, {

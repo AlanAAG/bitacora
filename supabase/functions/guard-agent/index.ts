@@ -1,13 +1,16 @@
 import Anthropic from 'npm:@anthropic-ai/sdk';
-import { createClient } from 'npm:@supabase/supabase-js';
 import OpenAI from 'npm:openai';
+import { z } from 'npm:zod';
+import { service, getUserId, json } from '../_shared/auth.ts';
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });
 const openai = new OpenAI({ apiKey: Deno.env.get('OPENAI_API_KEY')! });
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-);
+const supabase = service();
+
+const Body = z.object({ session_id: z.string().uuid() });
+
+const FLAG_TYPES = ['overcharge', 'unnecessary_service', 'premature_replacement', 'inconsistent_diagnosis'];
+const SEVERITIES = ['low', 'medium', 'high'];
 
 // Mexico market price ranges for common services (MXN, CDMX 2026)
 // ponytail: hardcoded for MVP. Replace with DB table when regional expansion starts.
@@ -27,9 +30,8 @@ Cambio de banda de distribución: $1,200-$2,500 MXN mano de obra, $800-$2,000 re
 Diagnóstico computarizado: $300-$600 MXN
 `;
 
-// Estimate savings based on flags found
 // ponytail: flat per-severity constants for MVP. Tie to mechanic_quote vs reference_data deltas later.
-function estimateSavings(flags: any[]): number {
+function estimateSavings(flags: { severity: string }[]): number {
   let total = 0;
   for (const flag of flags) {
     if (flag.severity === 'high') total += 1200;
@@ -39,57 +41,84 @@ function estimateSavings(flags: any[]): number {
   return total;
 }
 
+// Validate + sanitize the model's JSON before it touches the DB (avoids CHECK violations / bad enums).
+function sanitize(result: any) {
+  const score = Math.max(0, Math.min(100, Number(result?.trust_score) || 0));
+  const level = ['green', 'yellow', 'red'].includes(result?.trust_level)
+    ? result.trust_level
+    : (score >= 75 ? 'green' : score >= 40 ? 'yellow' : 'red');
+  const flags = Array.isArray(result?.flags)
+    ? result.flags
+        .filter((f: any) => FLAG_TYPES.includes(f?.type) && SEVERITIES.includes(f?.severity))
+        .map((f: any) => ({
+          type: f.type, severity: f.severity,
+          description: String(f.description ?? ''),
+          mechanic_quote: f.mechanic_quote ? String(f.mechanic_quote) : undefined,
+          reference_data: f.reference_data ? String(f.reference_data) : undefined,
+        }))
+    : [];
+  return { trust_score: score, trust_level: level, summary: String(result?.summary ?? ''), flags };
+}
+
 Deno.serve(async (req) => {
-  const { session_id } = await req.json();
+  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) return json({ error: 'invalid_body' }, 400);
+  const { session_id } = parsed.data;
+
+  const userId = await getUserId(req);
+  if (!userId) return json({ error: 'unauthorized' }, 401);
 
   const { data: session } = await supabase
     .from('guard_sessions')
     .select('*, cars(id, brand, model, year, current_mileage, owner_id)')
     .eq('id', session_id)
     .single();
-  if (!session) return new Response('Not found', { status: 404 });
+  if (!session) return json({ error: 'not_found' }, 404);
+
+  const car = session.cars;
+  if (car.owner_id !== userId) return json({ error: 'forbidden' }, 403);
+
+  // Enforce quota atomically BEFORE spending on Whisper/Claude.
+  const { data: allowed } = await supabase.rpc('consume_guard_credit', { p_user: car.owner_id });
+  if (!allowed) return json({ error: 'no_guard_credit' }, 402);
 
   await supabase.from('guard_sessions').update({ status: 'processing' }).eq('id', session_id);
 
-  const car = session.cars;
+  // The recorded file may be .m4a/.aac/.mp4 depending on platform; find whatever was uploaded.
+  const { data: listed } = await supabase.storage.from('guard-audio').list('', { search: session_id });
+  const audioName = listed?.find((o) => o.name.startsWith(session_id))?.name;
 
   try {
-    // 1. Get signed URL for audio
-    const { data: signed } = await supabase.storage
-      .from('guard-audio')
-      .createSignedUrl(`${session_id}.m4a`, 300);
-
-    // 2. Transcribe via Whisper
     let transcript = '';
-    if (signed?.signedUrl) {
-      const audioRes = await fetch(signed.signedUrl);
-      const audioBlob = await audioRes.blob();
-      const whisper = await openai.audio.transcriptions.create({
-        file: new File([audioBlob], 'audio.m4a', { type: 'audio/m4a' }),
-        model: 'whisper-1',
-        language: 'es',
-      });
-      transcript = whisper.text;
+    if (audioName) {
+      const { data: signed } = await supabase.storage.from('guard-audio').createSignedUrl(audioName, 300);
+      if (signed?.signedUrl) {
+        const audioBlob = await (await fetch(signed.signedUrl)).blob();
+        const whisper = await openai.audio.transcriptions.create({
+          file: new File([audioBlob], audioName, { type: 'audio/m4a' }),
+          model: 'whisper-1',
+          language: 'es',
+        });
+        transcript = whisper.text;
+      }
     }
+
+    const cleanup = async () => { if (audioName) await supabase.storage.from('guard-audio').remove([audioName]).catch(() => {}); };
 
     if (!transcript || transcript.trim().length < 20) {
       await supabase.from('guard_sessions').update({
         status: 'failed',
         error_message: 'No se pudo transcribir el audio. Asegúrate de grabar con el teléfono cerca.',
       }).eq('id', session_id);
-      await supabase.storage.from('guard-audio').remove([`${session_id}.m4a`]);
-      return new Response(JSON.stringify({ error: 'transcription_failed' }), { status: 400 });
+      await cleanup();
+      return json({ error: 'transcription_failed' }, 400);
     }
 
-    // 3. Fetch car service context
     const { data: history } = await supabase
       .from('service_records').select('*').eq('car_id', car.id)
       .order('service_date', { ascending: false }).limit(8);
+    const { data: parts } = await supabase.from('parts').select('*').eq('car_id', car.id);
 
-    const { data: parts } = await supabase
-      .from('parts').select('*').eq('car_id', car.id);
-
-    // 4. Analyze with Claude
     const analysis = await anthropic.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 2048,
@@ -124,22 +153,13 @@ Responde con este JSON exacto:
 {
   "trust_score": 85,
   "trust_level": "green",
-  "summary": "Resumen en 2 oraciones de lo que encontraste. Empieza con el veredicto general.",
+  "summary": "Resumen en 2 oraciones. Empieza con el veredicto general.",
   "flags": [
-    {
-      "type": "overcharge",
-      "severity": "high",
-      "description": "Descripción clara del problema en español.",
-      "mechanic_quote": "texto exacto que dijo el mecánico sobre este punto",
-      "reference_data": "el dato o precio de referencia que usaste para comparar"
-    }
+    { "type": "overcharge", "severity": "high", "description": "...", "mechanic_quote": "...", "reference_data": "..." }
   ]
 }
-
 Tipos de flag: overcharge, unnecessary_service, premature_replacement, inconsistent_diagnosis
-Niveles de severidad: low, medium, high
-trust_score: 0-100 (100 = completamente honesto, 0 = múltiples señales graves)
-trust_level: "green" (score >= 75), "yellow" (40-74), "red" (< 40)
+Severidad: low, medium, high. trust_score 0-100. trust_level green(>=75)/yellow(40-74)/red(<40).
 Si no hay problemas, devuelve flags: []`,
       }],
     });
@@ -148,27 +168,13 @@ Si no hay problemas, devuelve flags: []`,
     const raw = textBlock && textBlock.type === 'text' ? textBlock.text : '';
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON in analysis response');
-    const result = JSON.parse(jsonMatch[0]);
+    const result = sanitize(JSON.parse(jsonMatch[0]));
 
-    // 5. Estimate savings
     const estimatedSavings = result.flags.length > 0 ? estimateSavings(result.flags) : 0;
 
-    // 6. Decrement free sessions if applicable
-    const { data: profile } = await supabase.from('profiles')
-      .select('free_guard_sessions_remaining').eq('id', car.owner_id).single();
-    const { data: sub } = await supabase.from('subscriptions')
-      .select('plan').eq('user_id', car.owner_id).maybeSingle();
-    const isPaidGuard = sub?.plan === 'pro_guard';
-    if (!isPaidGuard && profile && profile.free_guard_sessions_remaining > 0) {
-      await supabase.from('profiles')
-        .update({ free_guard_sessions_remaining: profile.free_guard_sessions_remaining - 1 })
-        .eq('id', car.owner_id);
-    }
+    // Privacy: delete audio (only the transcript persists).
+    await cleanup();
 
-    // 7. Delete audio (privacy — only transcript persists)
-    await supabase.storage.from('guard-audio').remove([`${session_id}.m4a`]);
-
-    // 8. Save final result
     await supabase.from('guard_sessions').update({
       status: 'complete',
       transcript,
@@ -180,17 +186,13 @@ Si no hay problemas, devuelve flags: []`,
       ended_at: new Date().toISOString(),
     }).eq('id', session_id);
 
-    return new Response(JSON.stringify({ ...result, estimated_savings_mxn: estimatedSavings }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
-
+    return json({ ...result, estimated_savings_mxn: estimatedSavings });
   } catch (err) {
-    // Always delete audio on failure too
-    await supabase.storage.from('guard-audio').remove([`${session_id}.m4a`]).catch(() => {});
+    if (audioName) await supabase.storage.from('guard-audio').remove([audioName]).catch(() => {});
     await supabase.from('guard_sessions').update({
       status: 'failed',
       error_message: (err as Error).message,
     }).eq('id', session_id);
-    return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500 });
+    return json({ error: (err as Error).message }, 500);
   }
 });

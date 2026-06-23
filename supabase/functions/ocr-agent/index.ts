@@ -1,24 +1,34 @@
 import Anthropic from 'npm:@anthropic-ai/sdk';
-import { createClient } from 'npm:@supabase/supabase-js';
+import { z } from 'npm:zod';
+import { service, getUserId, json } from '../_shared/auth.ts';
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-);
+const supabase = service();
+
+const Body = z.object({ job_id: z.string().uuid() });
 
 Deno.serve(async (req) => {
-  const { job_id } = await req.json();
+  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) return json({ error: 'invalid_body' }, 400);
+  const { job_id } = parsed.data;
 
-  // Mark job as processing
+  const userId = await getUserId(req);
+  if (!userId) return json({ error: 'unauthorized' }, 401);
+
+  // Load job + owning car; verify ownership before doing any (paid) work.
+  const { data: job } = await supabase
+    .from('ocr_jobs').select('*, cars(owner_id)').eq('id', job_id).single();
+  if (!job) return json({ error: 'not_found' }, 404);
+  if (job.cars?.owner_id !== userId) return json({ error: 'forbidden' }, 403);
+
   await supabase.from('ocr_jobs').update({ status: 'processing' }).eq('id', job_id);
 
-  const { data: job } = await supabase.from('ocr_jobs').select('*').eq('id', job_id).single();
-  if (!job) return new Response('Job not found', { status: 404 });
-
-  // Get signed URL for the image
   const { data: signed } = await supabase.storage
     .from('ocr-photos').createSignedUrl(job.image_url.replace('ocr-photos/', ''), 300);
+  if (!signed?.signedUrl) {
+    await supabase.from('ocr_jobs').update({ status: 'failed', error_message: 'No se pudo leer la imagen.' }).eq('id', job_id);
+    return json({ error: 'signed_url_failed' }, 500);
+  }
 
   try {
     const response = await anthropic.messages.create({
@@ -27,10 +37,7 @@ Deno.serve(async (req) => {
       messages: [{
         role: 'user',
         content: [
-          {
-            type: 'image',
-            source: { type: 'url', url: signed!.signedUrl },
-          },
+          { type: 'image', source: { type: 'url', url: signed.signedUrl } },
           {
             type: 'text',
             text: `This is a page from a Mexican car service logbook (bitácora de mantenimiento).
@@ -50,10 +57,8 @@ If the image is not a car logbook, return { "records": [], "confidence": 0, "war
       }],
     });
 
-    // Find the text block (robust against any leading non-text block).
     const textBlock = response.content.find((b) => b.type === 'text');
     if (!textBlock || textBlock.type !== 'text') throw new Error('Unexpected response type');
-
     const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON in response');
     const extracted = JSON.parse(jsonMatch[0]);
@@ -64,14 +69,12 @@ If the image is not a car logbook, return { "records": [], "confidence": 0, "war
       completed_at: new Date().toISOString(),
     }).eq('id', job_id);
 
-    return new Response(JSON.stringify({ success: true, data: extracted }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return json({ success: true, data: extracted });
   } catch (err) {
     await supabase.from('ocr_jobs').update({
       status: 'failed',
       error_message: (err as Error).message,
     }).eq('id', job_id);
-    return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500 });
+    return json({ error: (err as Error).message }, 500);
   }
 });

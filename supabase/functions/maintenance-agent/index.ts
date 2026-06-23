@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js';
+import { requireCron, json } from '../_shared/auth.ts';
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -53,7 +54,9 @@ async function computeHealthScore(carId: string, currentMileage: number): Promis
 }
 
 Deno.serve(async (req) => {
-  const { scope, user_id } = await req.json();
+  if (!requireCron(req)) return json({ error: 'forbidden' }, 403);
+  const { scope, user_id } = await req.json().catch(() => ({}));
+  if (scope !== 'user' && scope !== 'all_users') return json({ error: 'bad_scope' }, 400);
   const today = new Date().toISOString().split('T')[0];
 
   const query = supabase.from('cars').select('id, owner_id, brand, model, display_name, current_mileage, plates, hologram_type');
@@ -113,6 +116,7 @@ Deno.serve(async (req) => {
     if (car.plates && car.hologram_type) {
       await supabase.functions.invoke('verification-agent', {
         body: { car_id: car.id, plates: car.plates, hologram_type: car.hologram_type, state: 'CDMX' },
+        headers: { 'x-cron-secret': Deno.env.get('CRON_SECRET')! },
       });
     }
 
