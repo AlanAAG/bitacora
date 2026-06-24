@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { TextInput, Button, Text, Chip } from 'react-native-paper';
 import { useServiceLog } from '../../hooks/useServiceLog';
-import { useParts } from '../../hooks/useParts';
+import { useCars } from '../../hooks/useCars';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ServiceType } from '../../types';
 
@@ -22,8 +22,8 @@ const SERVICE_OPTIONS: { value: ServiceType; label: string }[] = [
 export default function AddServiceRecordScreen() {
   const { carId } = useLocalSearchParams<{ carId: string }>();
   const { addRecord } = useServiceLog(carId);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { addPart } = useParts(carId);
+  const { cars, updateMileage } = useCars();
+  const car = cars.find(c => c.id === carId);
 
   const [form, setForm] = useState({
     service_date: new Date().toISOString().split('T')[0],
@@ -37,6 +37,14 @@ export default function AddServiceRecordScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Prefill the odometer with the car's current mileage (removes friction; she just confirms it).
+  useEffect(() => {
+    if (car && !form.mileage_at_service) {
+      setForm(f => ({ ...f, mileage_at_service: String(car.current_mileage) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [car]);
+
   const toggleService = (s: ServiceType) =>
     setSelectedServices(prev =>
       prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
@@ -48,10 +56,11 @@ export default function AddServiceRecordScreen() {
       return;
     }
     setLoading(true);
+    const km = parseInt(form.mileage_at_service);
     const { error } = await addRecord({
       car_id: carId,
       service_date: form.service_date,
-      mileage_at_service: parseInt(form.mileage_at_service),
+      mileage_at_service: km,
       shop_name: form.shop_name || undefined,
       services: selectedServices,
       description: form.description || undefined,
@@ -60,6 +69,8 @@ export default function AddServiceRecordScreen() {
       parts_replaced: [],
       imported_via_ocr: false,
     });
+    // Logging a service also refreshes the car's odometer — keeps the advisor accurate for free.
+    if (!error && car && km > car.current_mileage) await updateMileage(car.id, km);
     if (error) setError(error.message);
     else router.back();
     setLoading(false);
@@ -67,7 +78,8 @@ export default function AddServiceRecordScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text variant="headlineSmall" style={styles.title}>Nuevo servicio</Text>
+      <Text variant="headlineSmall" style={styles.title}>Registrar{car ? ` · ${car.display_name}` : ''}</Text>
+      <Text style={styles.hint}>Servicio, reparación o modificación. Para algo fuera de la lista, elige "Otro" y descríbelo.</Text>
       <TextInput label="Fecha (YYYY-MM-DD)" value={form.service_date}
         onChangeText={v => setForm(f => ({ ...f, service_date: v }))} style={styles.input} />
       <TextInput label="Kilometraje *" value={form.mileage_at_service}
@@ -104,7 +116,8 @@ export default function AddServiceRecordScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   content: { padding: 24 },
-  title: { fontWeight: 'bold', marginBottom: 20 },
+  title: { fontWeight: 'bold', marginBottom: 8 },
+  hint: { color: '#666', marginBottom: 16 },
   input: { marginBottom: 12 },
   label: { marginBottom: 8, color: '#666' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
