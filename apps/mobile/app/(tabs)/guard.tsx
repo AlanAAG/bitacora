@@ -186,6 +186,10 @@ export default function GuardScreen() {
             </View>
           ))}
         </View>
+
+        <Button mode="text" icon="history" onPress={() => router.push('/guard/history')} style={{ marginTop: Spacing.lg }}>
+          Ver historial de sesiones
+        </Button>
       </View>
     </PaywallGate>
   );

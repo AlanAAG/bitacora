@@ -35,6 +35,11 @@ export default function HomeScreen() {
       </View>
       {primary && <CirculationBanner car={primary} contingenciaPhase={contingencia} />}
       {activeReminders.slice(0, 3).map(r => <ReminderBanner key={r.id} reminder={r} />)}
+      {activeReminders.length > 3 && (
+        <Text style={styles.seeAll} onPress={() => router.push('/reminders')}>
+          Ver los {activeReminders.length} recordatorios →
+        </Text>
+      )}
       <FlatList
         data={cars}
         keyExtractor={c => c.id}
@@ -59,6 +64,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background, paddingTop: 56 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: Spacing.sm },
   header: { paddingHorizontal: Spacing.lg, marginBottom: Spacing.md },
+  seeAll: { ...Typography.label, color: Colors.primary, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm },
   list: { paddingHorizontal: Spacing.md, paddingBottom: 100 },
   fab: { position: 'absolute', bottom: Spacing.xl, right: Spacing.md, backgroundColor: Colors.primary },
 });

@@ -67,6 +67,16 @@ export default function PrivacySettingsScreen() {
       <Button mode="contained" buttonColor={Colors.danger} icon="delete" loading={busy} onPress={deleteAccount} style={styles.btn}>
         Eliminar mi cuenta
       </Button>
+
+      <Divider style={{ marginVertical: Spacing.lg }} />
+
+      <Text style={[Typography.label, { marginBottom: Spacing.sm }]}>Cuenta</Text>
+      <Button mode="outlined" icon="gift" onPress={() => router.push('/referral')} style={styles.btn}>
+        Invitar amigos
+      </Button>
+      <Button mode="text" icon="logout" onPress={async () => { await supabase.auth.signOut(); router.replace('/(auth)/onboarding'); }} style={styles.btn}>
+        Cerrar sesión
+      </Button>
       <Button mode="text" onPress={() => router.back()}>Volver</Button>
     </ScrollView>
   );
