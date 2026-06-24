@@ -30,6 +30,62 @@ function docReminderBody(docName: string, days: number): string {
   return `${docName} vence en ${days} días. Renuévalo antes de que sea urgente.`;
 }
 
+// Mirror of apps/mobile/lib/maintenanceSchedule.ts (source of truth) — keep in sync.
+const SERVICE_INTERVALS: Record<string, { km?: number; months?: number; cost: number; label: string }> = {
+  oil_change:    { km: 7500,  months: 6,  cost: 700,  label: 'Cambio de aceite' },
+  tire_rotation: { km: 10000,             cost: 350,  label: 'Rotación de llantas' },
+  air_filter:    { km: 15000,             cost: 350,  label: 'Filtro de aire' },
+  alignment:     { km: 20000,             cost: 500,  label: 'Alineación y balanceo' },
+  brake_service: { km: 40000,             cost: 1200, label: 'Balatas / frenos' },
+  spark_plugs:   { km: 40000,             cost: 900,  label: 'Bujías / afinación' },
+  coolant:       { km: 40000, months: 24, cost: 600,  label: 'Anticongelante' },
+  battery:       {            months: 36, cost: 2000, label: 'Batería' },
+  transmission:  { km: 60000,             cost: 1500, label: 'Aceite de transmisión' },
+  inspection:    { km: 10000, months: 6,  cost: 500,  label: 'Revisión general' },
+};
+
+// Create reminders + push for maintenance that's due or coming soon, from the service log.
+async function scheduleReminders(car: any, carName: string) {
+  const { data: records } = await supabase
+    .from('service_records').select('service_date, mileage_at_service, services').eq('car_id', car.id);
+  const today = new Date();
+
+  for (const [type, iv] of Object.entries(SERVICE_INTERVALS)) {
+    const recs = (records ?? [])
+      .filter((r) => Array.isArray(r.services) && r.services.includes(type))
+      .sort((a, b) => b.service_date.localeCompare(a.service_date));
+    const last = recs[0];
+    if (!last) continue; // never logged → leave it to the in-app "sin registro" view, don't spam push
+
+    let kmLeft: number | null = null;
+    let daysLeft: number | null = null;
+    if (iv.km != null) kmLeft = (last.mileage_at_service + iv.km) - car.current_mileage;
+    if (iv.months != null) {
+      const next = new Date(last.service_date + 'T00:00:00');
+      next.setMonth(next.getMonth() + iv.months);
+      daysLeft = Math.ceil((next.getTime() - today.getTime()) / 86400000);
+    }
+    const due = (kmLeft != null && kmLeft <= 0) || (daysLeft != null && daysLeft <= 0);
+    const soon = (kmLeft != null && kmLeft <= 1500) || (daysLeft != null && daysLeft <= 30);
+    if (!due && !soon) continue;
+
+    const { data: existing } = await supabase.from('reminders').select('id')
+      .eq('car_id', car.id).eq('source', 'agent').ilike('title', `%${iv.label}%`)
+      .eq('is_dismissed', false).maybeSingle();
+    if (existing) continue;
+
+    const when = due ? '¡Toca ahora!' : kmLeft != null ? `En ~${Math.max(0, kmLeft).toLocaleString('es-MX')} km` : `En ~${Math.max(0, daysLeft!)} días`;
+    await supabase.from('reminders').insert({
+      car_id: car.id,
+      title: `${iv.label} — tu ${carName}`,
+      description: `${when} · costo estimado ~$${iv.cost.toLocaleString('es-MX')} MXN`,
+      reminder_type: iv.km != null ? 'mileage' : 'date',
+      source: 'agent',
+    });
+    await sendPush(car.owner_id, `🔧 ${carName}`, `${iv.label}: ${when.toLowerCase()}`);
+  }
+}
+
 async function computeHealthScore(carId: string, currentMileage: number): Promise<number> {
   let score = 100;
   const today = new Date();
@@ -114,6 +170,9 @@ Deno.serve(async (req) => {
         await sendPush(car.owner_id, `⚡ ${carName}`, partReminderBody(part.part_name, kmLeft));
       }
     }
+
+    // 1.5 Maintenance schedule (oil, brakes, etc. from the service log)
+    await scheduleReminders(car, carName);
 
     // 2. Document expiry
     const { data: docs } = await supabase.from('documents')

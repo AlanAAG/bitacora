@@ -4,8 +4,9 @@ import { FAB, Text, ActivityIndicator, IconButton } from 'react-native-paper';
 import { useCars } from '../../hooks/useCars';
 import { useReminders } from '../../hooks/useReminders';
 import { CarCard } from '../../components/CarCard';
-import { ReminderBanner } from '../../components/ReminderBanner';
 import { CirculationBanner } from '../../components/CirculationBanner';
+import { NextActions } from '../../components/NextActions';
+import { MileagePrompt } from '../../components/MileagePrompt';
 import { EmptyState } from '../../components/EmptyState';
 import { supabase } from '../../lib/supabase';
 import { router } from 'expo-router';
@@ -14,7 +15,7 @@ import { Typography } from '../../constants/typography';
 import { Spacing } from '../../constants/spacing';
 
 export default function HomeScreen() {
-  const { cars, loading } = useCars();
+  const { cars, loading, refetch } = useCars();
   const { activeReminders } = useReminders(cars.map(c => c.id));
   const [contingencia, setContingencia] = useState<0 | 1 | 2>(0);
 
@@ -26,6 +27,7 @@ export default function HomeScreen() {
   if (loading) return <ActivityIndicator style={{ flex: 1 }} color={Colors.primary} />;
 
   const primary = cars[0];
+  const mileageStale = primary && (Date.now() - new Date(primary.updated_at).getTime()) > 14 * 86400000;
 
   return (
     <View style={styles.container}>
@@ -34,10 +36,16 @@ export default function HomeScreen() {
         <IconButton icon="cog" onPress={() => router.push('/settings/privacy')} />
       </View>
       {primary && <CirculationBanner car={primary} contingenciaPhase={contingencia} />}
-      {activeReminders.slice(0, 3).map(r => <ReminderBanner key={r.id} reminder={r} />)}
-      {activeReminders.length > 3 && (
+      {primary && mileageStale && <MileagePrompt car={primary} onSaved={refetch} />}
+      {primary && <NextActions car={primary} reminders={activeReminders.filter(r => r.car_id === primary.id)} />}
+      {primary && (
+        <Text style={styles.seeAll} onPress={() => router.push({ pathname: '/log/add', params: { carId: primary.id } })}>
+          + Registré un servicio
+        </Text>
+      )}
+      {activeReminders.length > 0 && (
         <Text style={styles.seeAll} onPress={() => router.push('/reminders')}>
-          Ver los {activeReminders.length} recordatorios →
+          Ver todos los recordatorios →
         </Text>
       )}
       <FlatList

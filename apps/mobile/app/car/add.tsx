@@ -28,11 +28,12 @@ export default function AddCarScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const [newCarId, setNewCarId] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!brand || !model || !year) { setError('Marca, modelo y año son requeridos.'); return; }
     setLoading(true);
-    const { error } = await addCar({
+    const { data, error } = await addCar({
       brand, model, year: parseInt(year), nickname: nickname || undefined,
       plates: plates || undefined, vin: vin || undefined,
       fuel_type: isElectricHybrid ? 'hybrid' : 'gasoline',
@@ -42,6 +43,7 @@ export default function AddCarScreen() {
     });
     setLoading(false);
     if (error) { setError(error.message); return; }
+    if (data) setNewCarId(data.id);
     setDone(true);
   };
 
@@ -56,8 +58,11 @@ export default function AddCarScreen() {
         <Text style={[Typography.body, { color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.sm }]}>
           Bitácora ya está monitoreando tu auto.
         </Text>
-        <Button mode="contained" style={styles.doneBtn} onPress={() => router.replace('/(tabs)')}>
-          Ver mi auto
+        <Button mode="contained" style={styles.doneBtn}
+          onPress={() => newCarId
+            ? router.replace({ pathname: '/car/setup', params: { carId: newCarId, mileage } })
+            : router.replace('/(tabs)')}>
+          Continuar
         </Button>
       </View>
     );
@@ -98,6 +103,7 @@ export default function AddCarScreen() {
       <View style={styles.holoHelper}>
         <Text style={Typography.caption}>
           Está en tu engomado/certificado de verificación. 00/0 = sin restricción de Hoy No Circula. 1 y 2 = sí descansan (1 día entre semana; el 2 también los sábados). Exento = sin verificación.
+          {'\n'}¿No estás segura? Deja el "0" por ahora — puedes cambiarlo después en el detalle del auto. Las placas también son opcionales.
         </Text>
       </View>
 
