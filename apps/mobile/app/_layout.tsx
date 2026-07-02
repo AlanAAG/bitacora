@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { registerPushToken } from '../lib/notifications';
+import { identifyPurchases } from '../lib/purchases';
 import { Colors } from '../constants/colors';
 
 const theme = {
@@ -26,7 +27,10 @@ export default function RootLayout() {
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
-      if (s) registerPushToken();
+      if (s) {
+        registerPushToken();
+        identifyPurchases(s.user.id);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);

@@ -15,7 +15,7 @@ The path is: **backend prod → dev build on your phone → extensive local test
 ## 1. Backend to production
 
 Follow `SETUP.md` top to bottom on your production Supabase project:
-1. Migrations `001` → `007` (`007_paywall_flag.sql` seeds `paywall=disabled`, keep it off until billing exists).
+1. Migrations `001` → `007` (`007_paywall_flag.sql` seeds `paywall=disabled`; flip it on once RevenueCat is configured — §2b).
 2. Create the 4 storage buckets (car-documents, ocr-photos, guard-audio private; guard-cards public).
 3. Vault secrets (`project_url`, `cron_secret`) + edge-function secrets (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CRON_SECRET`).
 4. Deploy the 9 functions with the exact JWT / `--no-verify-jwt` split in SETUP.md §5.
@@ -34,6 +34,17 @@ eas init                  # writes extra.eas.projectId into app.json — commit 
 `projectId` is also what makes `registerPushToken` work outside Expo Go.
 
 Bundle IDs are already set: `com.alanayala.bitacora` (both stores). `eas.json` has `development` / `preview` / `production` profiles.
+
+## 2b. Billing (RevenueCat — already wired in code)
+
+The app purchases through `react-native-purchases`; the `revenuecat-webhook` edge function writes the `subscriptions` row (single source of truth — clients can't). One-time dashboard setup:
+
+1. **Stores:** App Store Connect → create auto-renewable subscription `bitacora_pro_guard_monthly` ($149 MXN/mo) with a **7-day free introductory offer** (this is what makes the "Probar 7 días gratis" button true). Play Console → same product id, base plan monthly + 7-day free trial offer. (Requires the app record to exist and, for Apple, the Paid Apps agreement signed.)
+2. **RevenueCat:** create project → add both apps → entitlement `pro_guard` → attach both products → default Offering with a `monthly` package.
+3. **Keys:** copy the public Apple/Google SDK keys into `apps/mobile/.env` (`EXPO_PUBLIC_REVENUECAT_APPLE_KEY` / `_GOOGLE_KEY`). Without them the paywall stays "Disponible pronto".
+4. **Webhook:** `supabase secrets set REVENUECAT_WEBHOOK_SECRET=...`, deploy `revenuecat-webhook --no-verify-jwt`, then RevenueCat → Integrations → Webhooks → URL `https://PROJECT.supabase.co/functions/v1/revenuecat-webhook`, Authorization header `Bearer <secret>`.
+5. **Enable:** `UPDATE app_config SET value = '{"enabled":true}' WHERE key = 'paywall';`
+6. **Test in sandbox** (needs a dev/TestFlight build, never Expo Go): iOS sandbox tester account / Play license tester → buy → confirm the `subscriptions` row flips to `pro_guard` and Guard runs unlimited; cancel → row returns to `free` after expiry.
 
 ## 3. Build a development build and test locally (BEFORE any store step)
 
@@ -61,7 +72,7 @@ Guard Mode (the review-critical flow):
 - [ ] Consent screen appears once; recording shows black screen + pulse; screen-tap to stop.
 - [ ] 1–2 min real conversation (radio on, pocket audio) → transcription → flags → savings estimate.
 - [ ] Share card renders and shares to WhatsApp; audio file is gone from storage after analysis.
-- [ ] Quota: run sessions to 0 → paywall path appears; "Disponible pronto" (flag off) instead of purchase.
+- [ ] Quota: run sessions to 0 → paywall path appears; "Disponible pronto" when the flag is off, sandbox purchase + "Restaurar compras" when on (§2b.6).
 
 Notifications & agents (staging cron simulation):
 ```sh
@@ -101,7 +112,7 @@ Fill per store:
 **Review-risk items specific to Bitácora — address them in App Review notes:**
 1. **Audio recording with a dark screen.** State plainly: recording is user-initiated (big button), consent screen shown first (`guard_consent_given`), a visible red pulse stays on screen, audio is deleted right after analysis, nothing records in background. Never market it as "secret recording" in the listing — use the app's own framing: *"Escucha en silencio. Tú decides después."*
 2. **Demo account.** Provide credentials with a seeded car, service history, and 1 completed Guard session so the reviewer never hits an empty state; note that Guard analysis needs a real spoken conversation in Spanish.
-3. **Paywall.** The trial CTA is hidden (`app_config.paywall.enabled=false`), so there is no purchasable digital content → no IAP requirement yet. **When you enable billing, it MUST be via Apple/Google IAP (RevenueCat is the easy wrapper) — a Stripe checkout for app features is an instant rejection.**
+3. **Paywall.** Billing is store IAP via RevenueCat (§2b) — compliant on both stores. If you submit with the `paywall` flag off, there's no purchasable content and that's also fine; just don't mention pricing in the listing while it's off. A "Restaurar compras" button is present (Apple checks for it).
 
 Timeline expectations: Apple review 1–3 days (rejections common on first try — answer and resubmit, it's normal). Play production review up to ~7 days for a new account.
 

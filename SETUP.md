@@ -31,6 +31,7 @@ The service-role key is **not** stored anywhere readable (no GUC) — the cron f
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 supabase secrets set OPENAI_API_KEY=sk-...
 supabase secrets set CRON_SECRET=<same value as the vault cron_secret>
+supabase secrets set REVENUECAT_WEBHOOK_SECRET=<openssl rand -hex 32>
 ```
 (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.)
 
@@ -50,6 +51,11 @@ supabase functions deploy scrape-verification --no-verify-jwt
 supabase functions deploy daily-circulation   --no-verify-jwt
 supabase functions deploy purge-audio         --no-verify-jwt
 ```
+**Billing webhook (gated by the RevenueCat `Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>` header):**
+```sh
+supabase functions deploy revenuecat-webhook  --no-verify-jwt
+```
+Then in the RevenueCat dashboard → Integrations → Webhooks: URL `https://YOUR_PROJECT.supabase.co/functions/v1/revenuecat-webhook`, Authorization header `Bearer <same secret>`.
 
 ## 6. Mobile env
 ```sh

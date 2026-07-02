@@ -6,35 +6,56 @@ import { Typography } from '../constants/typography';
 import { Spacing } from '../constants/spacing';
 import { Copy } from '../constants/copy';
 import { router } from 'expo-router';
+import type { PurchasesPackage } from 'react-native-purchases';
 import { supabase } from '../lib/supabase';
+import { getMonthlyPackage, purchasePackage, purchasesAvailable, restorePurchases } from '../lib/purchases';
 
-// ponytail: no Stripe in MVP. The trial is granted server-side by the start-trial edge
-// function (clients can't write subscriptions). Replace with RevenueCat for real billing.
-async function activateTrial(): Promise<string | null> {
-  const { data, error } = await supabase.functions.invoke('start-trial');
-  if (error) return 'No se pudo activar la prueba. Intenta de nuevo.';
-  if (data?.error === 'already_subscribed') return 'Ya tienes una suscripción activa.';
-  return null;
+// Billing runs through the store (RevenueCat): purchase here → RevenueCat webhook →
+// revenuecat-webhook edge function writes the subscriptions row (clients can't).
+// The webhook lags the purchase by a few seconds; poll briefly so the UI catches up.
+async function waitForSubscription(tries = 5): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  for (let i = 0; i < tries && user; i++) {
+    const { data } = await supabase.from('subscriptions')
+      .select('plan').eq('user_id', user.id).maybeSingle();
+    if (data?.plan === 'pro_guard') return;
+    await new Promise(r => setTimeout(r, 1500));
+  }
 }
 
 export default function PaywallScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  // ponytail: store-review kill-switch — CTA hidden until app_config.paywall.enabled;
-  // replace activateTrial with RevenueCat purchase when billing lands.
+  // ponytail: store-review kill-switch — CTA hidden until app_config.paywall.enabled.
   const [paywallEnabled, setPaywallEnabled] = useState(false);
+  const [pkg, setPkg] = useState<PurchasesPackage | null>(null);
 
   useEffect(() => {
     supabase.from('app_config').select('value').eq('key', 'paywall').maybeSingle()
       .then(({ data }) => setPaywallEnabled(data?.value?.enabled === true));
   }, []);
 
-  const onTrial = async () => {
+  useEffect(() => {
+    if (paywallEnabled && purchasesAvailable()) getMonthlyPackage().then(setPkg);
+  }, [paywallEnabled]);
+
+  const onBuy = async () => {
+    if (!pkg) return;
     setBusy(true); setError('');
-    const msg = await activateTrial();
+    const result = await purchasePackage(pkg);
+    if (result.ok) await waitForSubscription();
     setBusy(false);
-    if (msg) { setError(msg); return; }
-    router.replace('/(tabs)');
+    if (result.ok) { router.replace('/(tabs)'); return; }
+    if (!result.cancelled) setError('No se pudo completar la compra. Intenta de nuevo.');
+  };
+
+  const onRestore = async () => {
+    setBusy(true); setError('');
+    const restored = await restorePurchases();
+    if (restored) await waitForSubscription();
+    setBusy(false);
+    if (restored) { router.replace('/(tabs)'); return; }
+    setError('No encontramos compras anteriores con esta cuenta.');
   };
 
   return (
@@ -79,10 +100,15 @@ export default function PaywallScreen() {
           {['Historial ilimitado', 'Modo Guardia ilimitado', 'Recordatorios inteligentes', 'Bóveda de documentos', 'Verificación vehicular automática'].map(f => (
             <Text key={f} style={[Typography.body, { marginBottom: 4 }]}>✓ {f}</Text>
           ))}
-          {paywallEnabled ? (
-            <Button mode="contained" style={styles.activateBtn} loading={busy} onPress={onTrial}>
-              Probar 7 días gratis
-            </Button>
+          {paywallEnabled && pkg ? (
+            <>
+              <Button mode="contained" style={styles.activateBtn} loading={busy} onPress={onBuy}>
+                Probar 7 días gratis
+              </Button>
+              <Text style={[Typography.caption, { color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.sm }]}>
+                Después {pkg.product.priceString}/mes · cancela cuando quieras
+              </Text>
+            </>
           ) : (
             <Text style={[Typography.label, { color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.lg }]}>
               Disponible pronto
@@ -92,6 +118,11 @@ export default function PaywallScreen() {
         </Card.Content>
       </Card>
 
+      {paywallEnabled && pkg ? (
+        <Button mode="text" disabled={busy} onPress={onRestore}>
+          Restaurar compras
+        </Button>
+      ) : null}
       <Button mode="text" onPress={() => router.back()}>
         {Copy.paywallFreeCta}
       </Button>
