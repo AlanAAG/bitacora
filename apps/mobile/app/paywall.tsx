@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Text, Button, Card } from 'react-native-paper';
 import { Colors } from '../constants/colors';
@@ -20,6 +20,14 @@ async function activateTrial(): Promise<string | null> {
 export default function PaywallScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // ponytail: store-review kill-switch — CTA hidden until app_config.paywall.enabled;
+  // replace activateTrial with RevenueCat purchase when billing lands.
+  const [paywallEnabled, setPaywallEnabled] = useState(false);
+
+  useEffect(() => {
+    supabase.from('app_config').select('value').eq('key', 'paywall').maybeSingle()
+      .then(({ data }) => setPaywallEnabled(data?.value?.enabled === true));
+  }, []);
 
   const onTrial = async () => {
     setBusy(true); setError('');
@@ -71,9 +79,15 @@ export default function PaywallScreen() {
           {['Historial ilimitado', 'Modo Guardia ilimitado', 'Recordatorios inteligentes', 'Bóveda de documentos', 'Verificación vehicular automática'].map(f => (
             <Text key={f} style={[Typography.body, { marginBottom: 4 }]}>✓ {f}</Text>
           ))}
-          <Button mode="contained" style={styles.activateBtn} loading={busy} onPress={onTrial}>
-            Probar 7 días gratis
-          </Button>
+          {paywallEnabled ? (
+            <Button mode="contained" style={styles.activateBtn} loading={busy} onPress={onTrial}>
+              Probar 7 días gratis
+            </Button>
+          ) : (
+            <Text style={[Typography.label, { color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.lg }]}>
+              Disponible pronto
+            </Text>
+          )}
           {error ? <Text style={{ color: Colors.danger, marginTop: Spacing.sm }}>{error}</Text> : null}
         </Card.Content>
       </Card>

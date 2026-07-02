@@ -16,3 +16,5 @@ export const Colors = {
   guardAccent:'#EF4444',  // red pulse = recording
   guardText:  '#FFFFFF',
 } as const;
+
+export type ColorKey = keyof typeof Colors;
