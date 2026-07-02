@@ -32,7 +32,7 @@ export default function DocsScreen() {
     if (data) setDocs(data);
   }, [primary]);
 
-  useEffect(() => { fetchDocs(); }, [fetchDocs]);
+  useEffect(() => { void Promise.resolve().then(fetchDocs); }, [fetchDocs]);
 
   if (!primary) return <EmptyState icon="📄" title="Sin auto registrado" body="Agrega un auto primero." quote={null} />;
 

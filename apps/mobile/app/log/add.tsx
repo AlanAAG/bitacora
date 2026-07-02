@@ -40,7 +40,9 @@ export default function AddServiceRecordScreen() {
   // Prefill the odometer with the car's current mileage (removes friction; she just confirms it).
   useEffect(() => {
     if (car && !form.mileage_at_service) {
-      setForm(f => ({ ...f, mileage_at_service: String(car.current_mileage) }));
+      // Deferred so the one-time prefill doesn't count as a sync setState-in-effect cascade.
+      void Promise.resolve().then(() =>
+        setForm(f => (f.mileage_at_service ? f : { ...f, mileage_at_service: String(car.current_mileage) })));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [car]);
@@ -79,7 +81,7 @@ export default function AddServiceRecordScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text variant="headlineSmall" style={styles.title}>Registrar{car ? ` · ${car.display_name}` : ''}</Text>
-      <Text style={styles.hint}>Servicio, reparación o modificación. Para algo fuera de la lista, elige "Otro" y descríbelo.</Text>
+      <Text style={styles.hint}>Servicio, reparación o modificación. Para algo fuera de la lista, elige “Otro” y descríbelo.</Text>
       <TextInput label="Fecha (YYYY-MM-DD)" value={form.service_date}
         onChangeText={v => setForm(f => ({ ...f, service_date: v }))} style={styles.input} />
       <TextInput label="Kilometraje *" value={form.mileage_at_service}

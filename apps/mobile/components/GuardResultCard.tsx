@@ -79,7 +79,7 @@ export function GuardResultCard({ trustScore, trustLevel, summary, flags, estima
               </Chip>
               <Text style={[Typography.body, { marginTop: Spacing.sm }]}>{flag.description}</Text>
               {flag.mechanic_quote && (
-                <Text style={styles.quote}>"{flag.mechanic_quote}"</Text>
+                <Text style={styles.quote}>“{flag.mechanic_quote}”</Text>
               )}
               {flag.reference_data && (
                 <Text style={styles.ref}>Referencia: {flag.reference_data}</Text>

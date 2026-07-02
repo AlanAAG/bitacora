@@ -103,7 +103,7 @@ export default function AddCarScreen() {
       <View style={styles.holoHelper}>
         <Text style={Typography.caption}>
           Está en tu engomado/certificado de verificación. 00/0 = sin restricción de Hoy No Circula. 1 y 2 = sí descansan (1 día entre semana; el 2 también los sábados). Exento = sin verificación.
-          {'\n'}¿No estás segura? Deja el "0" por ahora — puedes cambiarlo después en el detalle del auto. Las placas también son opcionales.
+          {'\n'}¿No estás segura? Deja el “0” por ahora — puedes cambiarlo después en el detalle del auto. Las placas también son opcionales.
         </Text>
       </View>
 

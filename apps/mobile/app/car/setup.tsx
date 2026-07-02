@@ -53,7 +53,7 @@ export default function CarSetupScreen() {
       <Text style={[Typography.heading, { marginBottom: Spacing.sm }]}>Una última cosa</Text>
       <Text style={[Typography.body, styles.sub]}>
         Para decirte qué necesita tu auto, ¿cuándo fue la última vez de cada cosa? Si no sabes, no hay problema —
-        toca "No sé".
+        toca “No sé”.
       </Text>
 
       {SERVICES.map(s => (

@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 // Service-role client (bypasses RLS) — only used after auth/ownership is verified.
 export const service = () => createClient(

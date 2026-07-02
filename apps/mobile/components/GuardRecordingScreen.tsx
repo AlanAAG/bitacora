@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { View, StyleSheet, Animated, StatusBar } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { Colors } from '../constants/colors';
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function GuardRecordingScreen({ onStop, shopName }: Props) {
-  const pulse = useRef(new Animated.Value(1)).current;
+  const [pulse] = useState(() => new Animated.Value(1));
 
   // Red pulsing dot — the only visual while recording
   useEffect(() => {

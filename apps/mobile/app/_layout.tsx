@@ -15,7 +15,9 @@ const theme = {
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  const [privacyAccepted, setPrivacyAccepted] = useState<boolean | null>(null);
+  // Keyed by user id so a stale value from a previous session can never leak through.
+  const [privacy, setPrivacy] = useState<{ uid: string; accepted: boolean } | null>(null);
+  const privacyAccepted = session && privacy?.uid === session.user.id ? privacy.accepted : null;
   const segments = useSegments();
 
   useEffect(() => {
@@ -31,9 +33,10 @@ export default function RootLayout() {
 
   // Track whether the user has accepted the aviso de privacidad (LFPDPPP gate).
   useEffect(() => {
-    if (!session) { setPrivacyAccepted(null); return; }
-    supabase.from('profiles').select('privacy_accepted_at').eq('id', session.user.id).maybeSingle()
-      .then(({ data }) => setPrivacyAccepted(!!data?.privacy_accepted_at));
+    if (!session) return;
+    const uid = session.user.id;
+    supabase.from('profiles').select('privacy_accepted_at').eq('id', uid).maybeSingle()
+      .then(({ data }) => setPrivacy({ uid, accepted: !!data?.privacy_accepted_at }));
   }, [session]);
 
   useEffect(() => {

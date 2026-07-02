@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 import { requireCron, json } from '../_shared/auth.ts';
 
 const supabase = createClient(
@@ -44,8 +44,14 @@ const SERVICE_INTERVALS: Record<string, { km?: number; months?: number; cost: nu
   inspection:    { km: 10000, months: 6,  cost: 500,  label: 'Revisión general' },
 };
 
+interface CarRow {
+  id: string;
+  owner_id: string;
+  current_mileage: number;
+}
+
 // Create reminders + push for maintenance that's due or coming soon, from the service log.
-async function scheduleReminders(car: any, carName: string) {
+async function scheduleReminders(car: CarRow, carName: string) {
   const { data: records } = await supabase
     .from('service_records').select('service_date, mileage_at_service, services').eq('car_id', car.id);
   const today = new Date();

@@ -3,7 +3,6 @@ import { View, StyleSheet } from 'react-native';
 import { Card, Text, TextInput, Button } from 'react-native-paper';
 import { Car } from '../types';
 import { useCars } from '../hooks/useCars';
-import { Colors } from '../constants/colors';
 import { Typography } from '../constants/typography';
 import { Spacing } from '../constants/spacing';
 

@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 import { requireCron, json } from '../_shared/auth.ts';
 
 const supabase = createClient(

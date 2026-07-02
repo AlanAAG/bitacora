@@ -1,5 +1,5 @@
-import Anthropic from 'npm:@anthropic-ai/sdk';
-import { z } from 'npm:zod';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.109.0';
+import { z } from 'npm:zod@4';
 import { service, getUserId, json } from '../_shared/auth.ts';
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
 import { Colors } from '../constants/colors';
@@ -19,7 +20,8 @@ interface Props {
 }
 
 export function EmptyState({ icon, title, body, quote }: Props) {
-  const q = quote ?? SOCIAL_QUOTES[Math.floor(Math.random() * SOCIAL_QUOTES.length)];
+  const [randomQuote] = useState(() => SOCIAL_QUOTES[Math.floor(Math.random() * SOCIAL_QUOTES.length)]);
+  const q = quote ?? randomQuote;
   return (
     <View style={styles.container}>
       <Text style={styles.icon}>{icon}</Text>

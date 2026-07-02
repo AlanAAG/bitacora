@@ -18,6 +18,7 @@ export default function HomeScreen() {
   const { cars, loading, refetch } = useCars();
   const { activeReminders } = useReminders(cars.map(c => c.id));
   const [contingencia, setContingencia] = useState<0 | 1 | 2>(0);
+  const [loadedAt] = useState(() => Date.now());
 
   useEffect(() => {
     supabase.from('app_config').select('value').eq('key', 'contingencia').maybeSingle()
@@ -27,7 +28,7 @@ export default function HomeScreen() {
   if (loading) return <ActivityIndicator style={{ flex: 1 }} color={Colors.primary} />;
 
   const primary = cars[0];
-  const mileageStale = primary && (Date.now() - new Date(primary.updated_at).getTime()) > 14 * 86400000;
+  const mileageStale = primary && (loadedAt - new Date(primary.updated_at).getTime()) > 14 * 86400000;
 
   return (
     <View style={styles.container}>

@@ -1,5 +1,5 @@
-import Anthropic from 'npm:@anthropic-ai/sdk';
-import { createClient } from 'npm:@supabase/supabase-js';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.109.0';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 import { requireCron, json } from '../_shared/auth.ts';
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });

@@ -1,6 +1,6 @@
-import Anthropic from 'npm:@anthropic-ai/sdk';
-import OpenAI from 'npm:openai';
-import { z } from 'npm:zod';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.109.0';
+import OpenAI from 'npm:openai@6';
+import { z } from 'npm:zod@4';
 import { service, getUserId, json } from '../_shared/auth.ts';
 
 const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });
@@ -42,6 +42,7 @@ function estimateSavings(flags: { severity: string }[]): number {
 }
 
 // Validate + sanitize the model's JSON before it touches the DB (avoids CHECK violations / bad enums).
+// deno-lint-ignore no-explicit-any -- untyped model output; this function IS the trust boundary
 function sanitize(result: any) {
   const score = Math.max(0, Math.min(100, Number(result?.trust_score) || 0));
   const level = ['green', 'yellow', 'red'].includes(result?.trust_level)
@@ -49,7 +50,9 @@ function sanitize(result: any) {
     : (score >= 75 ? 'green' : score >= 40 ? 'yellow' : 'red');
   const flags = Array.isArray(result?.flags)
     ? result.flags
+        // deno-lint-ignore no-explicit-any -- untyped model output, validated field-by-field below
         .filter((f: any) => FLAG_TYPES.includes(f?.type) && SEVERITIES.includes(f?.severity))
+        // deno-lint-ignore no-explicit-any -- same untyped model output
         .map((f: any) => ({
           type: f.type, severity: f.severity,
           description: String(f.description ?? ''),

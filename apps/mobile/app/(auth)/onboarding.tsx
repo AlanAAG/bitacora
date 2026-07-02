@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { View, StyleSheet, Dimensions, Animated } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { router } from 'expo-router';
@@ -12,7 +12,7 @@ const { width } = Dimensions.get('window');
 export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [painConfirmed, setPainConfirmed] = useState(false);
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [slideAnim] = useState(() => new Animated.Value(0));
 
   const goToStep = (n: number) => {
     Animated.timing(slideAnim, { toValue: -n * width, duration: 280, useNativeDriver: true }).start();
